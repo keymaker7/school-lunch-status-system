@@ -21,27 +21,35 @@ const App: React.FC = () => {
   const [isAdmin, setIsAdmin] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [activeGrade, setActiveGrade] = useState<number>(1);
+  const [activeGrade, setActiveGrade] = useState<number>(1);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   // Initial Logic: Ensure data exists in Firebase
   useEffect(() => {
     const initializeData = async () => {
-      const dbRef = ref(db);
-      const snapshot = await get(dbRef);
-      if (!snapshot.exists()) {
-        // DB is empty, seed it with defaults
-        const initialClasses: ClassData[] = [];
-        const defaults = { 1: 6, 2: 8, 3: 9, 4: 11, 5: 10, 6: 10 };
-        Object.entries(defaults).forEach(([grade, count]) => {
-          for (let i = 1; i <= count; i++) {
-            initialClasses.push({ id: `${grade}-${i}`, grade: parseInt(grade), classNum: i, status: 'WAITING' });
-          }
-        });
-        await set(ref(db, 'classes'), initialClasses);
-        await set(ref(db, 'config'), { gradeCounts: defaults });
-        await set(ref(db, 'lastResetDate'), new Date().toLocaleDateString());
+      try {
+        const dbRef = ref(db);
+        const snapshot = await get(dbRef);
+        if (!snapshot.exists()) {
+          // DB is empty, seed it with defaults
+          const initialClasses: ClassData[] = [];
+          const defaults = { 1: 6, 2: 8, 3: 9, 4: 11, 5: 10, 6: 10 };
+          Object.entries(defaults).forEach(([grade, count]) => {
+            for (let i = 1; i <= count; i++) {
+              initialClasses.push({ id: `${grade}-${i}`, grade: parseInt(grade), classNum: i, status: 'WAITING' });
+            }
+          });
+          await set(ref(db, 'classes'), initialClasses);
+          await set(ref(db, 'config'), { gradeCounts: defaults });
+          await set(ref(db, 'lastResetDate'), new Date().toLocaleDateString());
+        }
+      } catch (err: any) {
+        console.error("Firebase Init Error:", err);
+        setError(err.message || "데이터베이스 연결 실패");
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     };
     initializeData();
   }, []);
@@ -155,6 +163,16 @@ const App: React.FC = () => {
     return <div className="min-h-screen flex items-center justify-center bg-[#F8FAFC] text-slate-400 font-bold">로딩중...</div>;
   }
 
+  if (error) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-rose-50 text-rose-600 p-6 text-center">
+        <h2 className="text-2xl font-black mb-2">오류가 발생했습니다</h2>
+        <p className="mb-4 text-sm bg-white p-4 rounded-xl shadow-sm border border-rose-100">{error}</p>
+        <p className="text-xs text-rose-400">Firebase Console {'>'} Realtime Database {'>'} 규칙(Rules) 탭에서<br />read/write가 true로 설정되어 있는지 확인해주세요.</p>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#F8FAFC] text-[#1E293B] pb-40 font-sans selection:bg-rose-100">
       {/* App Bar */}
@@ -234,8 +252,8 @@ const App: React.FC = () => {
               key={grade}
               onClick={() => setActiveGrade(grade)}
               className={`shrink-0 px-10 py-4 rounded-[28px] font-black text-base transition-all duration-500 ${activeGrade === grade
-                  ? 'bg-slate-900 text-white shadow-2xl shadow-slate-300 -translate-y-2'
-                  : 'bg-white text-slate-400 hover:text-slate-900 border border-slate-100'
+                ? 'bg-slate-900 text-white shadow-2xl shadow-slate-300 -translate-y-2'
+                : 'bg-white text-slate-400 hover:text-slate-900 border border-slate-100'
                 }`}
             >
               {grade}학년

@@ -1,0 +1,5 @@
+{
+  "name": "School Lunch Status System",
+  "description": "Real-time class lunch notification system with admin controls and customizable class counts.",
+  "requestFramePermissions": []
+}

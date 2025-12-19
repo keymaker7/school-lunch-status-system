@@ -21,7 +21,6 @@ const App: React.FC = () => {
   const [isAdmin, setIsAdmin] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [activeGrade, setActiveGrade] = useState<number>(1);
-  const [activeGrade, setActiveGrade] = useState<number>(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 

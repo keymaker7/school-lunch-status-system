@@ -6,104 +6,154 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { LunchStatus, ClassData, SchoolConfig } from './types';
+import { db } from './firebase';
+import { ref, onValue, set, update, get } from "firebase/database";
 
 const STATUS_ORDER: LunchStatus[] = ['WAITING', 'GO', 'EATING', 'FINISHED'];
 const CHARACTER_IMG = "https://i.imgur.com/oBULNzB.jpeg";
 const TOP_BANNER_IMG = "https://i.imgur.com/UmGslKw.jpeg";
 
 const App: React.FC = () => {
-  const [config, setConfig] = useState<SchoolConfig>(() => {
-    const saved = localStorage.getItem('lunch_config_v6');
-    return saved ? JSON.parse(saved) : {
-      gradeCounts: { 1: 6, 2: 8, 3: 9, 4: 11, 5: 10, 6: 10 }
-    };
+  const [config, setConfig] = useState<SchoolConfig>({
+    gradeCounts: { 1: 6, 2: 8, 3: 9, 4: 11, 5: 10, 6: 10 }
   });
-
-  const [classes, setClasses] = useState<ClassData[]>(() => {
-    const saved = localStorage.getItem('lunch_status_v6');
-    if (saved) return JSON.parse(saved);
-
-    const initial: ClassData[] = [];
-    const defaults = { 1: 6, 2: 8, 3: 9, 4: 11, 5: 10, 6: 10 };
-    Object.entries(defaults).forEach(([grade, count]) => {
-      for (let i = 1; i <= count; i++) {
-        initial.push({ id: `${grade}-${i}`, grade: parseInt(grade), classNum: i, status: 'WAITING' });
-      }
-    });
-    return initial;
-  });
-
-  /* Daily Reset Logic */
-  useEffect(() => {
-    const checkReset = () => {
-      const today = new Date().toLocaleDateString();
-      const lastReset = localStorage.getItem('last_reset_date_v6');
-
-      if (lastReset !== today) {
-        // It's a new day, reset everything
-        setClasses(prev => prev.map(c => ({ ...c, status: 'WAITING' })));
-        localStorage.setItem('last_reset_date_v6', today);
-        console.log('Daily reset triggered');
-      }
-    };
-
-    // Check on mount
-    checkReset();
-
-    // Check every minute (for always-on displays)
-    const interval = setInterval(checkReset, 60000);
-    return () => clearInterval(interval);
-  }, []);
-
+  const [classes, setClasses] = useState<ClassData[]>([]);
   const [isAdmin, setIsAdmin] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [activeGrade, setActiveGrade] = useState<number>(1);
+  const [loading, setLoading] = useState(true);
 
+  // Initial Logic: Ensure data exists in Firebase
   useEffect(() => {
-    localStorage.setItem('lunch_config_v6', JSON.stringify(config));
-  }, [config]);
-
-  useEffect(() => {
-    localStorage.setItem('lunch_status_v6', JSON.stringify(classes));
-  }, [classes]);
-
-  useEffect(() => {
-    setClasses(prev => {
-      let next = [...prev];
-      for (let grade = 1; grade <= 6; grade++) {
-        const targetCount = config.gradeCounts[grade] || 0;
-        const currentClassesInGrade = next.filter(c => c.grade === grade);
-        if (currentClassesInGrade.length < targetCount) {
-          for (let i = currentClassesInGrade.length + 1; i <= targetCount; i++) {
-            next.push({ id: `${grade}-${i}`, grade, classNum: i, status: 'WAITING' });
+    const initializeData = async () => {
+      const dbRef = ref(db);
+      const snapshot = await get(dbRef);
+      if (!snapshot.exists()) {
+        // DB is empty, seed it with defaults
+        const initialClasses: ClassData[] = [];
+        const defaults = { 1: 6, 2: 8, 3: 9, 4: 11, 5: 10, 6: 10 };
+        Object.entries(defaults).forEach(([grade, count]) => {
+          for (let i = 1; i <= count; i++) {
+            initialClasses.push({ id: `${grade}-${i}`, grade: parseInt(grade), classNum: i, status: 'WAITING' });
           }
-        } else if (currentClassesInGrade.length > targetCount) {
-          next = next.filter(c => !(c.grade === grade && c.classNum > targetCount));
+        });
+        await set(ref(db, 'classes'), initialClasses);
+        await set(ref(db, 'config'), { gradeCounts: defaults });
+        await set(ref(db, 'lastResetDate'), new Date().toLocaleDateString());
+      }
+      setLoading(false);
+    };
+    initializeData();
+  }, []);
+
+  // Sync Logic: Listen to Firebase changes
+  useEffect(() => {
+    const classesRef = ref(db, 'classes');
+    const configRef = ref(db, 'config');
+
+    // Subscribe to classes
+    const unsubClasses = onValue(classesRef, (snapshot) => {
+      const data = snapshot.val();
+      if (data) setClasses(data);
+    });
+
+    // Subscribe to config
+    const unsubConfig = onValue(configRef, (snapshot) => {
+      const data = snapshot.val();
+      if (data) setConfig(data);
+    });
+
+    return () => {
+      unsubClasses();
+      unsubConfig();
+    };
+  }, []);
+
+  // Daily Auto-Reset Logic (Server-side simulation)
+  useEffect(() => {
+    const checkAndReset = async () => {
+      const today = new Date().toLocaleDateString();
+      const dateRef = ref(db, 'lastResetDate');
+      const snapshot = await get(dateRef);
+      const lastDate = snapshot.val();
+
+      if (lastDate !== today) {
+        // Perform reset
+        console.log("New day detected. Resetting database...");
+        const classesRef = ref(db, 'classes');
+        const currentSnapshot = await get(classesRef);
+        if (currentSnapshot.exists()) {
+          const currentClasses: ClassData[] = currentSnapshot.val();
+          const resetClasses = currentClasses.map(c => ({ ...c, status: 'WAITING' }));
+          await set(classesRef, resetClasses);
+          await set(dateRef, today);
         }
       }
-      return next.sort((a, b) => a.grade === b.grade ? a.classNum - b.classNum : a.grade - b.grade);
-    });
-  }, [config.gradeCounts]);
+    };
 
-  const toggleStatus = (id: string) => {
-    if (!isAdmin) return;
-    setClasses(prev => prev.map(c => {
-      if (c.id === id) {
-        const nextIdx = (STATUS_ORDER.indexOf(c.status) + 1) % STATUS_ORDER.length;
-        return { ...c, status: STATUS_ORDER[nextIdx] };
+    // Check on load
+    checkAndReset();
+    // Check periodically
+    const interval = setInterval(checkAndReset, 60000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Handle Updates
+  const updateGradeCount = (grade: number, count: number) => {
+    const newConfig = { ...config, gradeCounts: { ...config.gradeCounts, [grade]: count } };
+
+    // Calculate new classes based on config change (Tricky part: merging existing status)
+    // For simplicity, we regenerate the list while trying to preserve status of existing classes
+    let newClasses = [...classes];
+    const currentCount = classes.filter(c => c.grade === grade).length;
+
+    if (count > currentCount) {
+      // Add new classes
+      for (let i = currentCount + 1; i <= count; i++) {
+        newClasses.push({ id: `${grade}-${i}`, grade, classNum: i, status: 'WAITING' });
       }
-      return c;
-    }));
+    } else if (count < currentCount) {
+      // Remove classes
+      newClasses = newClasses.filter(c => !(c.grade === grade && c.classNum > count));
+    }
+
+    // Sort
+    newClasses.sort((a, b) => a.grade === b.grade ? a.classNum - b.classNum : a.grade - b.grade);
+
+    // Update DB
+    update(ref(db), {
+      config: newConfig,
+      classes: newClasses
+    });
+  };
+
+  const toggleStatus = (index: number, currentStatus: LunchStatus) => {
+    if (!isAdmin) return;
+    const nextIdx = (STATUS_ORDER.indexOf(currentStatus) + 1) % STATUS_ORDER.length;
+    const nextStatus = STATUS_ORDER[nextIdx];
+
+    // Update specific class in DB
+    // Note: Firebase arrays are 0-indexed objects. We need to find the correct index in the 'classes' array.
+    // Since 'classes' is a flat array in our state, 'index' passed here should be the index in that array.
+    // However, we filtered in the UI. Let's find the real index.
+
+    // Actually, simple update:
+    set(ref(db, `classes/${index}/status`), nextStatus);
   };
 
   const resetAll = () => {
     if (window.confirm("오늘의 급식 상태를 모두 초기화하시겠습니까?")) {
-      setClasses(prev => prev.map(c => ({ ...c, status: 'WAITING' })));
+      const reset = classes.map(c => ({ ...c, status: 'WAITING' }));
+      set(ref(db, 'classes'), reset);
     }
   };
 
   const movingClasses = useMemo(() => classes.filter(c => c.status === 'GO').map(c => `${c.grade}-${c.classNum}`), [classes]);
   const eatingClasses = useMemo(() => classes.filter(c => c.status === 'EATING').map(c => `${c.grade}-${c.classNum}`), [classes]);
+
+  if (loading) {
+    return <div className="min-h-screen flex items-center justify-center bg-[#F8FAFC] text-slate-400 font-bold">로딩중...</div>;
+  }
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] text-[#1E293B] pb-40 font-sans selection:bg-rose-100">
@@ -195,9 +245,17 @@ const App: React.FC = () => {
 
         {/* Grid Area */}
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-6 sm:gap-8 px-2">
-          {classes.filter(c => c.grade === activeGrade).map(cls => (
-            <ClassCard key={cls.id} cls={cls} isAdmin={isAdmin} onClick={() => toggleStatus(cls.id)} />
-          ))}
+          {classes.map((cls, index) => { // Map all classes to find correct index
+            if (cls.grade !== activeGrade) return null; // Filter visually only
+            return (
+              <ClassCard
+                key={cls.id}
+                cls={cls}
+                isAdmin={isAdmin}
+                onClick={() => toggleStatus(index, cls.status)}
+              />
+            );
+          })}
         </div>
       </main>
 
@@ -225,8 +283,8 @@ const App: React.FC = () => {
                   <label className="block text-[11px] font-black text-slate-400 uppercase mb-2 tracking-widest">{g}학년</label>
                   <input
                     type="number"
-                    value={config.gradeCounts[g]}
-                    onChange={(e) => setConfig(prev => ({ ...prev, gradeCounts: { ...prev.gradeCounts, [g]: parseInt(e.target.value) || 0 } }))}
+                    value={config.gradeCounts[g] || 0}
+                    onChange={(e) => updateGradeCount(g, parseInt(e.target.value) || 0)}
                     className="w-full bg-transparent text-3xl font-black text-slate-900 text-center outline-none"
                     min="0"
                   />

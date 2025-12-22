@@ -9,7 +9,7 @@ import { LunchStatus, ClassData, SchoolConfig } from './types';
 import { db } from './firebase';
 import { ref, onValue, set, update, get } from "firebase/database";
 
-const STATUS_ORDER: LunchStatus[] = ['WAITING', 'GO', 'EATING', 'FINISHED'];
+const STATUS_ORDER: LunchStatus[] = ['WAITING', 'GO', 'EATING', 'DINING', 'FINISHED'];
 const CHARACTER_IMG = "https://i.imgur.com/oBULNzB.jpeg";
 const TOP_BANNER_IMG = "https://i.imgur.com/UmGslKw.jpeg";
 
@@ -157,6 +157,7 @@ const App: React.FC = () => {
 
   const movingClasses = useMemo(() => classes.filter(c => c.status === 'GO').map(c => `${c.grade}-${c.classNum}`), [classes]);
   const eatingClasses = useMemo(() => classes.filter(c => c.status === 'EATING').map(c => `${c.grade}-${c.classNum}`), [classes]);
+  const diningClasses = useMemo(() => classes.filter(c => c.status === 'DINING').map(c => `${c.grade}-${c.classNum}`), [classes]);
 
   if (loading) {
     return <div className="min-h-screen flex items-center justify-center bg-[#F8FAFC] text-slate-400 font-bold">로딩중...</div>;
@@ -212,11 +213,11 @@ const App: React.FC = () => {
         </section>
 
         {/* EXTRA LARGE Status Dashboard */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-8 mb-16">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 sm:gap-8 mb-16">
           <div className="bg-white p-8 sm:p-14 rounded-[50px] sm:rounded-[80px] border-4 border-emerald-50 shadow-2xl shadow-emerald-100 flex flex-col items-center text-center gap-6 transition-all hover:scale-[1.03] active:scale-[0.98]">
             <div className="w-24 h-24 sm:w-32 sm:h-32 rounded-[30%] bg-emerald-50 text-emerald-500 flex items-center justify-center text-6xl sm:text-7xl animate-bounce">🏃</div>
             <div className="w-full">
-              <p className="text-sm sm:text-base font-black text-emerald-600 uppercase tracking-[0.4em] mb-4">지금 내려오세요!</p>
+              <p className="text-sm sm:text-base font-black text-emerald-600 uppercase tracking-[0.4em] mb-4">지금 내려갑니다!</p>
               <div className="min-h-[100px] flex items-center justify-center">
                 <p className="text-5xl sm:text-7xl font-black text-slate-900 leading-none tracking-tighter">
                   {movingClasses.length > 0 ? movingClasses.map(c => `${c}반`).join(', ') : '비어있음'}
@@ -231,6 +232,17 @@ const App: React.FC = () => {
               <div className="min-h-[100px] flex items-center justify-center">
                 <p className="text-5xl sm:text-7xl font-black text-slate-900 leading-none tracking-tighter">
                   {eatingClasses.length > 0 ? eatingClasses.map(c => `${c}반`).join(', ') : '비어있음'}
+                </p>
+              </div>
+            </div>
+          </div>
+          <div className="bg-white p-8 sm:p-14 rounded-[50px] sm:rounded-[80px] border-4 border-orange-50 shadow-2xl shadow-orange-100 flex flex-col items-center text-center gap-6 transition-all hover:scale-[1.03] active:scale-[0.98]">
+            <div className="w-24 h-24 sm:w-32 sm:h-32 rounded-[30%] bg-orange-50 text-orange-500 flex items-center justify-center text-6xl sm:text-7xl">😋</div>
+            <div className="w-full">
+              <p className="text-sm sm:text-base font-black text-orange-600 uppercase tracking-[0.4em] mb-4">식사 중</p>
+              <div className="min-h-[100px] flex items-center justify-center">
+                <p className="text-5xl sm:text-7xl font-black text-slate-900 leading-none tracking-tighter">
+                  {diningClasses.length > 0 ? diningClasses.map(c => `${c}반`).join(', ') : '비어있음'}
                 </p>
               </div>
             </div>
@@ -326,6 +338,7 @@ const ClassCard: React.FC<{ cls: ClassData; isAdmin: boolean; onClick: () => voi
     switch (cls.status) {
       case 'GO': return 'bg-emerald-500 border-emerald-400 text-white shadow-2xl shadow-emerald-200 scale-115 z-10 ring-[12px] ring-emerald-500/10';
       case 'EATING': return 'bg-blue-500 border-blue-400 text-white shadow-2xl shadow-blue-200 scale-115 z-10 ring-[12px] ring-blue-500/10';
+      case 'DINING': return 'bg-orange-500 border-orange-400 text-white shadow-2xl shadow-orange-200 scale-115 z-10 ring-[12px] ring-orange-500/10';
       case 'FINISHED': return 'bg-slate-100 border-slate-200 text-slate-300 opacity-40 grayscale';
       default: return 'bg-white border-slate-100 text-slate-500 shadow-md hover:shadow-2xl hover:translate-y-[-6px] hover:border-slate-200';
     }
@@ -334,7 +347,8 @@ const ClassCard: React.FC<{ cls: ClassData; isAdmin: boolean; onClick: () => voi
   const getLabel = () => {
     switch (cls.status) {
       case 'GO': return '이동중';
-      case 'EATING': return '배식/식사';
+      case 'EATING': return '배식중';
+      case 'DINING': return '식사중';
       case 'FINISHED': return '완료';
       default: return '대기';
     }
@@ -350,7 +364,7 @@ const ClassCard: React.FC<{ cls: ClassData; isAdmin: boolean; onClick: () => voi
         <div className="text-xs font-black uppercase tracking-[0.25em] opacity-70">{getLabel()}</div>
       </div>
 
-      {(cls.status === 'GO' || cls.status === 'EATING') && (
+      {(cls.status === 'GO' || cls.status === 'EATING' || cls.status === 'DINING') && (
         <div className="absolute top-6 right-8 w-3 h-3 rounded-full bg-white animate-ping"></div>
       )}
     </div>

@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
 */
 
-export type LunchStatus = 'WAITING' | 'GO' | 'EATING' | 'FINISHED';
+export type LunchStatus = 'WAITING' | 'GO' | 'EATING' | 'DINING' | 'FINISHED';
 
 export interface ClassData {
   id: string;

@@ -21,6 +21,8 @@ const App: React.FC = () => {
   const [isAdmin, setIsAdmin] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [activeGrade, setActiveGrade] = useState<number>(1);
+  const [showResetModal, setShowResetModal] = useState(false);
+  const [resetMode, setResetMode] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -136,22 +138,37 @@ const App: React.FC = () => {
 
   const toggleStatus = (index: number, currentStatus: LunchStatus) => {
     if (!isAdmin) return;
+
+    if (resetMode) {
+      // Force Reset Mode
+      set(ref(db, `classes/${index}/status`), 'WAITING');
+      return;
+    }
+
     const nextIdx = (STATUS_ORDER.indexOf(currentStatus) + 1) % STATUS_ORDER.length;
     const nextStatus = STATUS_ORDER[nextIdx];
 
     // Update specific class in DB
-    // Note: Firebase arrays are 0-indexed objects. We need to find the correct index in the 'classes' array.
-    // Since 'classes' is a flat array in our state, 'index' passed here should be the index in that array.
-    // However, we filtered in the UI. Let's find the real index.
-
-    // Actually, simple update:
     set(ref(db, `classes/${index}/status`), nextStatus);
+  };
+
+  const resetGrade = (targetGrade: number) => {
+    if (window.confirm(`${targetGrade}학년을 모두 초기화하시겠습니까?`)) {
+      const updates: { [key: string]: LunchStatus } = {};
+      classes.forEach((c, idx) => {
+        if (c.grade === targetGrade) {
+          updates[`classes/${idx}/status`] = 'WAITING';
+        }
+      });
+      update(ref(db), updates);
+    }
   };
 
   const resetAll = () => {
     if (window.confirm("오늘의 급식 상태를 모두 초기화하시겠습니까?")) {
       const reset = classes.map(c => ({ ...c, status: 'WAITING' }));
       set(ref(db, 'classes'), reset);
+      setShowResetModal(false);
     }
   };
 
@@ -288,16 +305,79 @@ const App: React.FC = () => {
         </div>
       </main>
 
-      {/* Admin Floating Reset */}
+      {/* Admin Floating Action Button */}
       {isAdmin && (
         <div className="fixed bottom-12 left-1/2 -translate-x-1/2 w-full max-w-xs px-6 z-[60]">
           <button
-            onClick={resetAll}
-            className="w-full bg-rose-500 text-white py-6 rounded-[35px] shadow-3xl shadow-rose-200 font-black text-xl flex items-center justify-center gap-3 active:scale-90 transition-all border-4 border-white"
+            onClick={() => setShowResetModal(true)}
+            className={`w-full py-6 rounded-[35px] shadow-3xl font-black text-xl flex items-center justify-center gap-3 active:scale-90 transition-all border-4 border-white ${resetMode ? 'bg-amber-400 text-slate-900 shadow-amber-200 animate-pulse' : 'bg-rose-500 text-white shadow-rose-200'}`}
           >
-            <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" /><path d="M21 3v5h-5" /><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" /><path d="M3 21v-5h5" /></svg>
-            초기화
+            {resetMode ? (
+              <>
+                <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2v4" /><path d="m16.2 7.8 2.9-2.9" /><path d="M18 12h4" /><path d="m16.2 16.2 2.9 2.9" /><path d="M12 18v4" /><path d="m4.9 19.1 2.9-2.9" /><path d="M2 12h4" /><path d="m4.9 4.9 2.9 2.9" /></svg>
+                터치로 초기화 중...
+              </>
+            ) : (
+              <>
+                <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" /><path d="M21 3v5h-5" /><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" /><path d="M3 21v-5h5" /></svg>
+                초기화 메뉴
+              </>
+            )}
           </button>
+        </div>
+      )}
+
+      {/* Reset Modal */}
+      {showResetModal && (
+        <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-6 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300">
+          <div className="bg-white rounded-t-[40px] sm:rounded-[60px] shadow-3xl w-full max-w-lg overflow-hidden animate-in slide-in-from-bottom duration-300">
+            <div className="p-8 sm:p-10">
+              <div className="flex items-center justify-between mb-8">
+                <h2 className="text-2xl font-black text-slate-900">초기화 옵션</h2>
+                <button onClick={() => setShowResetModal(false)} className="p-2 rounded-full hover:bg-slate-100 text-slate-400">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+              </div>
+
+              {/* 1. Reset Mode Toggle */}
+              <div className="mb-8 p-6 bg-amber-50 rounded-[30px] border-2 border-amber-100 flex items-center justify-between">
+                <div>
+                  <div className="font-black text-amber-900 text-lg mb-1">터치로 초기화 모드</div>
+                  <div className="text-xs font-bold text-amber-600/80">카드를 누르면 즉시 '대기'로 변경됨</div>
+                </div>
+                <button
+                  onClick={() => { setResetMode(!resetMode); setShowResetModal(false); }}
+                  className={`w-16 h-9 rounded-full transition-colors relative ${resetMode ? 'bg-amber-500' : 'bg-slate-200'}`}
+                >
+                  <div className={`absolute top-1 left-1 w-7 h-7 bg-white rounded-full shadow-sm transition-transform ${resetMode ? 'translate-x-7' : 'translate-x-0'}`}></div>
+                </button>
+              </div>
+
+              {/* 2. Grade Reset */}
+              <div className="mb-8">
+                <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-4 ml-2">학년별 초기화</label>
+                <div className="grid grid-cols-3 gap-3">
+                  {[1, 2, 3, 4, 5, 6].map(g => (
+                    <button
+                      key={g}
+                      onClick={() => resetGrade(g)}
+                      className="py-4 rounded-[20px] bg-slate-50 border-2 border-slate-100 font-black text-slate-600 hover:bg-slate-100 hover:border-slate-200 active:scale-95 transition-all"
+                    >
+                      {g}학년
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 3. All Reset */}
+              <button
+                onClick={resetAll}
+                className="w-full bg-rose-50 text-rose-600 border-2 border-rose-100 py-5 rounded-[30px] font-black text-lg active:scale-95 transition-all hover:bg-rose-100"
+              >
+                전체 초기화 (All Reset)
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
